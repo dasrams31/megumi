@@ -7,7 +7,7 @@ import json
 import time
 
 import requests
-from flask import Flask, request, jsonify, render_template_string
+from flask import Flask, request, jsonify, render_template_string, Response
 
 NINEROUTER = "http://127.0.0.1:20128/v1/chat/completions"
 KEY_PATH = "/home/hatch/workspace/9router-setup/user-api-key"
@@ -86,6 +86,8 @@ color:var(--text);font-size:16px;cursor:pointer;backdrop-filter:blur(8px)}
 .lang{background:var(--card);border:1px solid var(--line);color:var(--text);border-radius:999px;
 padding:7px 13px;font-size:12.5px;font-weight:700;cursor:pointer;backdrop-filter:blur(8px)}
 .lang.active{background:var(--pink);border-color:var(--pink);color:#14101a}
+#voxsel{background:var(--card);border:1px solid var(--line);color:var(--text);border-radius:999px;
+padding:7px 10px;font-size:12.5px;font-weight:700;cursor:pointer;backdrop-filter:blur(8px);max-width:170px}
 .chat{position:fixed;left:0;right:0;bottom:0;z-index:5;padding:10px 14px calc(12px + env(safe-area-inset-bottom));
 display:flex;flex-direction:column;gap:10px;max-width:640px;margin:0 auto}
 .msgs{display:flex;flex-direction:column;gap:8px;max-height:38vh;overflow-y:auto;scrollbar-width:none}
@@ -135,6 +137,7 @@ color:#14101a;font-size:18px;cursor:pointer;font-weight:800}
 <div class="langrow">
   <button class="lang active" data-l="id">&#127470;&#127481; ID</button>
   <button class="lang" data-l="jp">&#127471;&#127477; JP</button>
+  <select id="voxsel" title="Suara anime (VOICEVOX)" style="display:none"></select>
 </div>
 <div class="chat">
   <div class="msgs" id="msgs"></div>
@@ -169,7 +172,34 @@ const STR={id:{ph:'Ketik pesan...',hello:'Dipa-kun, selamat datang kembali! Kamu
 function addMsg(who,text,me){const d=document.createElement('div');d.className='msg'+(me?' me':'');
 d.innerHTML='<div class="who">'+who+'</div><div></div>';d.lastChild.textContent=text;
 msgs.appendChild(d);msgs.scrollTop=msgs.scrollHeight;return d;}
-function speak(t){if(!TTS)return;try{speechSynthesis.cancel();
+let VOX=null,VOXES=[],voxRAF=null,actx=null;
+function stopVox(){if(voxRAF)cancelAnimationFrame(voxRAF);voxRAF=null;}
+async function loadVoices(){if(VOXES.length)return;
+try{const r=await fetch('/api/voices');const j=await r.json();
+if(j.voices&&j.voices.length){VOXES=j.voices;const s=document.getElementById('voxsel');
+s.innerHTML='<option value="">Browser</option>'+VOXES.map((v,i)=>'<option value="'+v.id+'"'+(i===0?' selected':'')+'>'+v.label+'</option>').join('');
+s.onchange=()=>{VOX=s.value||null;};VOX=VOXES[0].id;}}catch(e){}}
+async function speakVox(t){stopVox();stopFlap();try{speechSynthesis.cancel();}catch(_){}
+try{const r=await fetch('/api/tts',{method:'POST',headers:{'Content-Type':'application/json'},
+body:JSON.stringify({text:t,speaker:VOX})});
+if(!r.ok)throw 0;
+const ab=await r.arrayBuffer();
+actx=actx||new (window.AudioContext||window.webkitAudioContext)();
+if(actx.state==='suspended')await actx.resume();
+const buf=await actx.decodeAudioData(ab);
+const src=actx.createBufferSource();src.buffer=buf;
+const an=actx.createAnalyser();an.fftSize=512;an.smoothingTimeConstant=0.4;
+src.connect(an);an.connect(actx.destination);
+const td=new Uint8Array(an.fftSize);
+stage.classList.add('speaking');
+src.onended=()=>{stage.classList.remove('speaking');setMouth(0);stopVox();};
+src.start();
+const loop=()=>{an.getByteTimeDomainData(td);let s=0;
+for(let i=0;i<td.length;i++){const v=(td[i]-128)/128;s+=v*v;}
+setMouth(Math.min(1,Math.sqrt(s/td.length)*7));
+voxRAF=requestAnimationFrame(loop);};
+loop();return true;}catch(e){stage.classList.remove('speaking');setMouth(0);return false;}}
+function speakBrowser(t){try{speechSynthesis.cancel();
 const u=new SpeechSynthesisUtterance(t);u.lang=LANG==='id'?'id-ID':'ja-JP';u.rate=1;
 const vs=speechSynthesis.getVoices().filter(v=>v.lang.startsWith(u.lang.slice(0,2)));
 if(vs.length)u.voice=vs.find(v=>v.name.toLowerCase().includes('female'))||vs[0];
@@ -177,6 +207,9 @@ u.onstart=()=>{stage.classList.add('speaking');startFlap();};
 u.onend=u.onerror=()=>{stage.classList.remove('speaking');imgEl.style.transform='';stopFlap();};
 u.onboundary=()=>{imgEl.style.transform='scale(1.02)';setTimeout(()=>imgEl.style.transform='',130);};
 speechSynthesis.speak(u);}catch(e){}}
+async function speak(t){if(!TTS)return;
+if(LANG==='jp'&&VOX){if(await speakVox(t))return;}
+speakBrowser(t);}
 async function send(text){text=(text||'').trim();if(!text||busy)return;busy=true;
 document.getElementById('send').disabled=true;resetIdle();
 addMsg(LANG==='id'?'DIPA-KUN':'\u30c7\u30a3\u30d1\u541b',text,true);inp.value='';
@@ -193,9 +226,11 @@ document.getElementById('send').onclick=()=>send(inp.value);
 inp.onkeydown=e=>{if(e.key==='Enter')send(inp.value);};
 document.querySelectorAll('.lang').forEach(b=>b.onclick=()=>{
 document.querySelectorAll('.lang').forEach(x=>x.classList.remove('active'));b.classList.add('active');
-LANG=b.dataset.l;inp.placeholder=STR[LANG].ph;document.getElementById('title').textContent=STR[LANG].title;});
+LANG=b.dataset.l;inp.placeholder=STR[LANG].ph;document.getElementById('title').textContent=STR[LANG].title;
+const vxs=document.getElementById('voxsel');vxs.style.display=LANG==='jp'?'':'none';
+if(LANG==='jp')loadVoices();});
 document.getElementById('ttsbtn').onclick=e=>{TTS=!TTS;e.target.classList.toggle('off',!TTS);
-if(!TTS)try{speechSynthesis.cancel();stage.classList.remove('speaking');}catch(_){}};
+if(!TTS){stopVox();setMouth(0);try{speechSynthesis.cancel();stage.classList.remove('speaking');}catch(_){}}};
 // mic
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
 const mic=document.getElementById('mic');
@@ -307,6 +342,60 @@ def chat():
         return jsonify({"reply": text})
     except Exception as e:
         return jsonify({"error": "bridge error: %s" % e}), 502
+
+
+VOICEVOX = "http://127.0.0.1:50021"
+# Curated anime-style female voices (character name fragments, in preference order)
+VOX_PREFER = ["四国めたん", "春日部つむぎ", "もち子さん", "九州そら", "雨晴はう",
+              "WhiteCUL", "No.7", "ずんだもん"]
+
+
+@app.route("/api/voices")
+def voices():
+    """Curated VOICEVOX speaker list for the voice picker. 502 when engine down."""
+    try:
+        sp = requests.get(VOICEVOX + "/speakers", timeout=5).json()
+        ranked = []
+        for s in sp:
+            name = s.get("name", "")
+            pref = next((i for i, p in enumerate(VOX_PREFER) if p in name), 99)
+            for st in s.get("styles", []):
+                if pref < 99 and st.get("name") in ("ノーマル", "ヒソヒソ"):
+                    ranked.append((pref, name, st["id"],
+                                   "%s (%s)" % (name, st["name"])))
+        if not ranked:  # fallback: first normal styles of any character
+            for s in sp:
+                for st in s.get("styles", []):
+                    if st.get("name") == "ノーマル":
+                        ranked.append((99, s.get("name", ""), st["id"],
+                                       "%s" % s.get("name", "")))
+                        break
+                if len(ranked) >= 6:
+                    break
+        ranked.sort(key=lambda x: (x[0], x[1]))
+        return jsonify({"voices": [{"id": r[2], "label": r[3]} for r in ranked]})
+    except Exception as e:
+        return jsonify({"voices": [], "error": "voicevox down: %s" % e}), 502
+
+
+@app.route("/api/tts", methods=["POST"])
+def tts():
+    """Proxy text to VOICEVOX engine, return WAV. 502 when engine down."""
+    data = request.get_json(force=True)
+    text = (data.get("text") or "")[:500]
+    speaker = data.get("speaker") or ""
+    if not text or not speaker:
+        return jsonify({"error": "text and speaker required"}), 400
+    try:
+        q = requests.post(VOICEVOX + "/audio_query",
+                          params={"text": text, "speaker": speaker}, timeout=20)
+        q.raise_for_status()
+        s = requests.post(VOICEVOX + "/synthesis",
+                          params={"speaker": speaker}, json=q.json(), timeout=90)
+        s.raise_for_status()
+        return Response(s.content, mimetype="audio/wav")
+    except Exception as e:
+        return jsonify({"error": "voicevox: %s" % e}), 502
 
 
 @app.route("/health")
