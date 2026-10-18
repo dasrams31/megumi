@@ -55,6 +55,14 @@ animation:breathe 6s ease-in-out infinite;box-shadow:0 0 80px rgba(0,0,0,.5)}
 background:linear-gradient(180deg,#f4c9ab,#e0a37f);box-shadow:0 1px 4px rgba(60,20,10,.25);
 transform:translate(-50%,-50%) scaleY(0)}
 .lid.blink{animation:blinkA .22s ease-in-out}
+#imgB{opacity:0;transition:opacity .18s ease}
+.stage.waving #imgB{opacity:1;animation:waveSway .55s ease-in-out 3}
+@keyframes waveSway{0%,100%{transform:rotate(0)}25%{transform:rotate(-2.5deg)}75%{transform:rotate(2.5deg)}}
+.stage.waving .lid,.stage.waving .mouth{opacity:0}
+.mouth{position:absolute;left:44.3%;top:48.6%;width:3.4%;aspect-ratio:2.2/1;transform:translate(-50%,-50%);
+background:#b0705f;border-radius:50%;z-index:2;pointer-events:none;overflow:hidden;transition:opacity .2s}
+.mouth .in{position:absolute;left:12%;right:12%;top:18%;bottom:18%;
+background:radial-gradient(ellipse at center,#6b2a2a,#3d1414);border-radius:50%;transform:scaleY(0)}
 @keyframes blinkA{0%{transform:translate(-50%,-50%) scaleY(0)}45%{transform:translate(-50%,-50%) scaleY(1)}100%{transform:translate(-50%,-50%) scaleY(0)}}
 @media (min-width:900px){
 .pwrap{justify-content:flex-start;padding-left:4vw}
@@ -103,9 +111,11 @@ color:#14101a;font-size:18px;cursor:pointer;font-weight:800}
 .hint{text-align:center;font-size:11.5px;color:var(--muted)}
 </style></head><body>
 <div class="pwrap" id="pwrap"><div class="stage" id="stage" title="Sapa Megumi">
-<img src="/static/megumi.jpg" alt="Megumi Kato" draggable="false">
+<img id="imgA" src="/static/megumi.jpg" alt="Megumi Kato" draggable="false">
+<img id="imgB" src="/static/megumi-wave.jpg" alt="" draggable="false" aria-hidden="true">
 <div class="lid" id="lidL" style="left:52.9%;top:41.2%"></div>
 <div class="lid" id="lidR" style="left:43.8%;top:41.6%"></div>
+<div class="mouth" id="mouth"><div class="in" id="mouthIn"></div></div>
 </div></div><div class="scrim"></div>
 <div class="top">
   <div class="pill"><span class="dot"></span><span id="title">Megumi Kato &middot; Live2D AI</span></div>
@@ -133,7 +143,17 @@ let LANG='id', TTS=true, busy=false;
 const hist=[];
 const msgs=document.getElementById('msgs'), inp=document.getElementById('inp'),
       stage=document.getElementById('stage'), hint=document.getElementById('hint'),
-      pwrap=document.getElementById('pwrap'), imgEl=stage.querySelector('img');
+      pwrap=document.getElementById('pwrap'), imgEl=stage.querySelector('img'),
+      mouthIn=document.getElementById('mouthIn');
+let waving=false, flapTO=null;
+function setMouth(o){mouthIn.style.transform='scaleY('+o+')';}
+function flapLoop(){if(!waving){const r=Math.random();setMouth(r<0.35?0:r<0.7?0.55:1);}
+flapTO=setTimeout(flapLoop,95+Math.random()*110);}
+function startFlap(){stopFlap();flapLoop();}
+function stopFlap(){clearTimeout(flapTO);flapTO=null;setMouth(0);}
+function doWave(){if(waving)return;waving=true;stage.classList.add('waving');
+setTimeout(()=>{stage.classList.remove('waving');waving=false;},1700);}
+const WAVE={id:'Hai, Dipa-kun!',jp:'\u3084\u3063\u307b\u30fc\u3001\u30c7\u30a3\u30d1\u541b\uFF01'};
 const STR={id:{ph:'Ketik pesan...',hello:'Dipa-kun, selamat datang kembali! Kamu bisa bicara langsung lewat mic atau ketik pesan di bawah ya.',title:'Megumi Kato \u00b7 Live2D AI'},
            jp:{ph:'\u30e1\u30c3\u30bb\u30fc\u30b8\u3092\u5165\u529b...',hello:'\u30c7\u30a3\u30d1\u541b\u3001\u304a\u304b\u3048\u308a! \u30de\u30a4\u30af\u3067\u8a71\u3057\u304b\u3051\u3066\u3082\u3001\u4e0b\u3067\u6253\u3063\u3066\u3082\u3044\u3044\u3088\u3002',title:'\u52a0\u85e4\u6075 \u00b7 Live2D AI'}};
 function addMsg(who,text,me){const d=document.createElement('div');d.className='msg'+(me?' me':'');
@@ -143,7 +163,8 @@ function speak(t){if(!TTS)return;try{speechSynthesis.cancel();
 const u=new SpeechSynthesisUtterance(t);u.lang=LANG==='id'?'id-ID':'ja-JP';u.rate=1;
 const vs=speechSynthesis.getVoices().filter(v=>v.lang.startsWith(u.lang.slice(0,2)));
 if(vs.length)u.voice=vs.find(v=>v.name.toLowerCase().includes('female'))||vs[0];
-u.onstart=()=>stage.classList.add('speaking');u.onend=u.onerror=()=>{stage.classList.remove('speaking');imgEl.style.transform='';};
+u.onstart=()=>{stage.classList.add('speaking');startFlap();};
+u.onend=u.onerror=()=>{stage.classList.remove('speaking');imgEl.style.transform='';stopFlap();};
 u.onboundary=()=>{imgEl.style.transform='scale(1.02)';setTimeout(()=>imgEl.style.transform='',130);};
 speechSynthesis.speak(u);}catch(e){}}
 async function send(text){text=(text||'').trim();if(!text||busy)return;busy=true;
@@ -182,7 +203,7 @@ return h<11?'Selamat pagi':h<15?'Selamat siang':h<18?'Selamat sore':'Selamat mal
 addMsg('MEGUMI KATO',daypart()+', Dipa-kun! '+(LANG==='id'?'Senang kamu mampir. Mau ngobrol apa hari ini?':'\u4f1a\u3044\u306b\u6765\u3066\u304f\u308c\u3066\u3046\u308c\u3057\u3044\u3002\u4eca\u65e5\u306f\u4f55\u3092\u8a71\u305d\u3046\u304B\uFF1F'),false);
 // --- interactivity: blink, cursor-follow parallax, poke, idle nudges ---
 const lids=[document.getElementById('lidL'),document.getElementById('lidR')];
-(function blink(){lids.forEach(l=>{l.classList.remove('blink');void l.offsetWidth;l.classList.add('blink');});
+(function blink(){if(!waving)lids.forEach(l=>{l.classList.remove('blink');void l.offsetWidth;l.classList.add('blink');});
 setTimeout(blink,2200+Math.random()*3800);})();
 window.addEventListener('mousemove',e=>{
 const x=e.clientX/window.innerWidth-.5,y=e.clientY/window.innerHeight-.5;
@@ -204,9 +225,11 @@ stage.addEventListener('click',()=>{if(poking||busy)return;poking=true;resetIdle
 const now=Date.now();pokeTimes=pokeTimes.filter(t=>now-t<4000);pokeTimes.push(now);
 const flustered=pokeTimes.length>=3;
 stage.classList.add('poke');setTimeout(()=>{stage.classList.remove('poke');poking=false;},480);
-speak(flustered?FLUSTER[LANG]:POKE[LANG][Math.floor(Math.random()*POKE[LANG].length)]);
-if(flustered)pokeTimes=[];});
+if(flustered){pokeTimes=[];speak(FLUSTER[LANG]);}
+else if(Math.random()<0.45){doWave();speak(WAVE[LANG]);}
+else speak(POKE[LANG][Math.floor(Math.random()*POKE[LANG].length)]);});
 resetIdle();
+setTimeout(()=>{doWave();},1500);
 </script></body></html>"""
 
 
