@@ -29,6 +29,7 @@ SYSTEM = {
 
 PAGE = """<!DOCTYPE html>
 <html lang="id"><head><meta charset="utf-8">
+<link rel="icon" href="data:,">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Megumi Kato - Live2D AI</title>
 <style>
@@ -108,9 +109,17 @@ border-radius:999px;padding:6px 6px 6px 16px;backdrop-filter:blur(10px)}
 .sendbtn{width:44px;height:44px;flex:none;border-radius:50%;background:var(--pink);border:none;
 color:#14101a;font-size:18px;cursor:pointer;font-weight:800}
 .sendbtn:disabled{opacity:.5}
+#l2d{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:manipulation}
+.stage.live #imgA,.stage.live #imgB,.stage.live .lid,.stage.live .mouth{opacity:0!important;pointer-events:none}
+#imgA{transition:opacity .5s ease}
 .hint{text-align:center;font-size:11.5px;color:var(--muted)}
-</style></head><body>
+</style>
+<script src="/static/live2d/live2dcubismcore.min.js"></script>
+<script src="/static/live2d/pixi.min.js"></script>
+<script src="/static/live2d/cubism4.min.js"></script>
+</head><body>
 <div class="pwrap" id="pwrap"><div class="stage" id="stage" title="Sapa Megumi">
+<canvas id="l2d"></canvas>
 <img id="imgA" src="/static/megumi.jpg" alt="Megumi Kato" draggable="false">
 <img id="imgB" src="/static/megumi-wave.jpg" alt="" draggable="false" aria-hidden="true">
 <div class="lid" id="lidL" style="left:52.9%;top:41.2%"></div>
@@ -147,11 +156,12 @@ const msgs=document.getElementById('msgs'), inp=document.getElementById('inp'),
       mouthIn=document.getElementById('mouthIn');
 let waving=false, flapTO=null;
 function setMouth(o){mouthIn.style.transform='scaleY('+o+')';}
-function flapLoop(){if(!waving){const r=Math.random();setMouth(r<0.35?0:r<0.7?0.55:1);}
+function flapLoop(){const r=Math.random(),o=r<0.35?0:r<0.7?0.55:1;
+if(live2dModel&&!waving)setLiveMouth(o);else if(!waving)setMouth(o);
 flapTO=setTimeout(flapLoop,95+Math.random()*110);}
 function startFlap(){stopFlap();flapLoop();}
-function stopFlap(){clearTimeout(flapTO);flapTO=null;setMouth(0);}
-function doWave(){if(waving)return;waving=true;stage.classList.add('waving');
+function stopFlap(){clearTimeout(flapTO);flapTO=null;setMouth(0);if(live2dModel)setLiveMouth(0);}
+function doWave(){if(waving||live2dModel)return;waving=true;stage.classList.add('waving');
 setTimeout(()=>{stage.classList.remove('waving');waving=false;},1700);}
 const WAVE={id:'Hai, Dipa-kun!',jp:'\u3084\u3063\u307b\u30fc\u3001\u30c7\u30a3\u30d1\u541b\uFF01'};
 const STR={id:{ph:'Ketik pesan...',hello:'Dipa-kun, selamat datang kembali! Kamu bisa bicara langsung lewat mic atau ketik pesan di bawah ya.',title:'Megumi Kato \u00b7 Live2D AI'},
@@ -201,6 +211,34 @@ function daypart(){const h=new Date().getHours();
 if(LANG==='jp')return h<10?'\u304a\u306f\u3088\u3046':h<18?'\u3053\u3093\u306b\u3061\u306f':'\u3053\u3093\u3070\u3093\u306f';
 return h<11?'Selamat pagi':h<15?'Selamat siang':h<18?'Selamat sore':'Selamat malam';}
 addMsg('MEGUMI KATO',daypart()+', Dipa-kun! '+(LANG==='id'?'Senang kamu mampir. Mau ngobrol apa hari ini?':'\u4f1a\u3044\u306b\u6765\u3066\u304f\u308c\u3066\u3046\u308c\u3057\u3044\u3002\u4eca\u65e5\u306f\u4f55\u3092\u8a71\u305d\u3046\u304B\uFF1F'),false);
+// --- Live2D (real rigged model; demo: Haru sample) ---
+let live2dModel=null;
+function setLiveMouth(o){try{live2dModel.internalModel.coreModel.setParameterValueById('ParamMouthOpenY',o);}catch(e){}}
+function fitLive2D(){if(!live2dModel)return;const w=stage.clientWidth||300,h=stage.clientHeight||600;
+const iw=live2dModel.internalModel.width,ih=live2dModel.internalModel.height;
+const s=h/ih*0.96;live2dModel.scale.set(s);
+live2dModel.anchor.set(0.5,0.5);live2dModel.x=w/2;live2dModel.y=h/2;}
+async function initLive2D(){try{
+if(!window.PIXI||!PIXI.live2d)return;
+const pixiApp=new PIXI.Application({view:document.getElementById('l2d'),transparent:true,antialias:true,resizeTo:stage});
+const model=await PIXI.live2d.Live2DModel.from('/static/live2d/Haru/Haru.model3.json');
+pixiApp.stage.addChild(model);live2dModel=model;window.__l2d=model;fitLive2D();
+window.addEventListener('resize',fitLive2D);
+model.on('hit',areas=>onLiveTap(areas));
+stage.classList.add('live');
+document.getElementById('hint').textContent='Live2D demo \u00b7 model Haru (Live2D Inc. sample) \u00b7 balasan bisa 30 dtk - 2 mnt';
+}catch(e){/* fallback: static sprite stays */}}
+function onLiveTap(areas){if(busy)return;resetIdle();
+const now=Date.now();pokeTimes=pokeTimes.filter(t=>now-t<4000);pokeTimes.push(now);
+const flustered=pokeTimes.length>=3;
+try{
+live2dModel.motion('TapBody');
+const ex=['F01','F02','F05','F07'];live2dModel.expression(ex[Math.floor(Math.random()*ex.length)]);
+setTimeout(()=>{try{live2dModel.expression('F08');}catch(e){}},2500);
+}catch(e){}
+if(flustered){pokeTimes=[];speak(FLUSTER[LANG]);}
+else speak(POKE[LANG][Math.floor(Math.random()*POKE[LANG].length)]);}
+initLive2D();
 // --- interactivity: blink, cursor-follow parallax, poke, idle nudges ---
 const lids=[document.getElementById('lidL'),document.getElementById('lidR')];
 (function blink(){if(!waving)lids.forEach(l=>{l.classList.remove('blink');void l.offsetWidth;l.classList.add('blink');});
@@ -221,7 +259,7 @@ function idleNudge(){if(busy||!TTS||document.hidden){resetIdle();return;}
 if(idleCount>=2)return;const line=IDLE[LANG][idleCount%IDLE[LANG].length];idleCount++;
 addMsg('MEGUMI KATO',line,false);speak(line);
 if(idleCount<2)idleTimer=setTimeout(idleNudge,70000);}
-stage.addEventListener('click',()=>{if(poking||busy)return;poking=true;resetIdle();
+stage.addEventListener('click',()=>{if(poking||busy||live2dModel)return;poking=true;resetIdle();
 const now=Date.now();pokeTimes=pokeTimes.filter(t=>now-t<4000);pokeTimes.push(now);
 const flustered=pokeTimes.length>=3;
 stage.classList.add('poke');setTimeout(()=>{stage.classList.remove('poke');poking=false;},480);
