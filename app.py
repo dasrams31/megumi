@@ -38,11 +38,30 @@ PAGE = """<!DOCTYPE html>
 html,body{height:100%}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
 color:var(--text);overflow:hidden;background:#0a0c11}
-.stage{position:fixed;inset:0;background:url(/static/megumi.jpg) center 20%/cover no-repeat;
-animation:breathe 6s ease-in-out infinite}
+.pwrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:1;
+transition:transform .35s ease-out;will-change:transform}
+.pwrap::before{content:"";position:absolute;inset:-40px;background:url(/static/megumi.jpg) center/cover;
+filter:blur(28px) brightness(.5);z-index:-1}
+.stage{position:relative;height:100%;aspect-ratio:1/2;max-width:100%;overflow:hidden;cursor:pointer;
+animation:breathe 6s ease-in-out infinite;box-shadow:0 0 80px rgba(0,0,0,.5)}
 @keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.018)}}
+.stage img{position:absolute;inset:0;width:100%;height:100%;object-fit:fill;display:block;user-select:none;-webkit-user-drag:none}
 .stage.speaking{animation:speak .5s ease-in-out infinite}
-@keyframes speak{0%,100%{transform:scale(1.018) translateY(0)}50%{transform:scale(1.022) translateY(-4px)}}
+@keyframes speak{0%,100%{transform:scale(1.01)}50%{transform:scale(1.03) translateY(-5px)}}
+.stage.poke img{animation:pokeA .45s ease}
+@keyframes pokeA{0%{transform:scale(1)}30%{transform:scale(1.05,.93)}60%{transform:scale(.97,1.04)}100%{transform:scale(1)}}
+.lid{position:absolute;width:7.5%;height:2.6%;border-radius:50%;z-index:2;pointer-events:none;
+background:linear-gradient(180deg,#f4c9ab,#e0a37f);box-shadow:0 1px 4px rgba(60,20,10,.25);
+transform:translate(-50%,-50%) scaleY(0)}
+.lid.blink{animation:blinkA .22s ease-in-out}
+@keyframes blinkA{0%{transform:translate(-50%,-50%) scaleY(0)}45%{transform:translate(-50%,-50%) scaleY(1)}100%{transform:translate(-50%,-50%) scaleY(0)}}
+@media (min-width:900px){
+.pwrap{justify-content:flex-start;padding-left:4vw}
+.chat{left:auto!important;right:0;width:min(520px,44vw);top:0;bottom:0;justify-content:flex-end;
+background:linear-gradient(90deg,transparent,rgba(5,6,10,.55) 30%);padding-top:90px}
+.msgs{max-height:none;flex:1}
+.langrow{left:auto;right:calc(min(520px,44vw) + 14px)}
+}
 .scrim{position:fixed;inset:0;background:linear-gradient(180deg,rgba(5,6,10,.55),transparent 30%,transparent 55%,rgba(5,6,10,.72));pointer-events:none}
 .top{position:fixed;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:center;
 padding:calc(10px + env(safe-area-inset-top)) 14px 10px;z-index:5}
@@ -82,7 +101,11 @@ color:#14101a;font-size:18px;cursor:pointer;font-weight:800}
 .sendbtn:disabled{opacity:.5}
 .hint{text-align:center;font-size:11.5px;color:var(--muted)}
 </style></head><body>
-<div class="stage" id="stage"></div><div class="scrim"></div>
+<div class="pwrap" id="pwrap"><div class="stage" id="stage" title="Sapa Megumi">
+<img src="/static/megumi.jpg" alt="Megumi Kato" draggable="false">
+<div class="lid" id="lidL" style="left:52.9%;top:41.2%"></div>
+<div class="lid" id="lidR" style="left:43.8%;top:41.6%"></div>
+</div></div><div class="scrim"></div>
 <div class="top">
   <div class="pill"><span class="dot"></span><span id="title">Megumi Kato &middot; Live2D AI</span></div>
   <div class="icons">
@@ -108,7 +131,8 @@ color:#14101a;font-size:18px;cursor:pointer;font-weight:800}
 let LANG='id', TTS=true, busy=false;
 const hist=[];
 const msgs=document.getElementById('msgs'), inp=document.getElementById('inp'),
-      stage=document.getElementById('stage'), hint=document.getElementById('hint');
+      stage=document.getElementById('stage'), hint=document.getElementById('hint'),
+      pwrap=document.getElementById('pwrap');
 const STR={id:{ph:'Ketik pesan...',hello:'Dipa-kun, selamat datang kembali! Kamu bisa bicara langsung lewat mic atau ketik pesan di bawah ya.',title:'Megumi Kato \u00b7 Live2D AI'},
            jp:{ph:'\u30e1\u30c3\u30bb\u30fc\u30b8\u3092\u5165\u529b...',hello:'\u30c7\u30a3\u30d1\u541b\u3001\u304a\u304b\u3048\u308a! \u30de\u30a4\u30af\u3067\u8a71\u3057\u304b\u3051\u3066\u3082\u3001\u4e0b\u3067\u6253\u3063\u3066\u3082\u3044\u3044\u3088\u3002',title:'\u52a0\u85e4\u6075 \u00b7 Live2D AI'}};
 function addMsg(who,text,me){const d=document.createElement('div');d.className='msg'+(me?' me':'');
@@ -151,6 +175,19 @@ try{rec.start();mic.classList.add('listening');}catch(_){}};}
 else mic.style.display='none';
 if('speechSynthesis' in window)speechSynthesis.getVoices();
 addMsg('MEGUMI KATO',STR.id.hello,false);
+// --- interactivity: blink, cursor-follow parallax, poke ---
+const lids=[document.getElementById('lidL'),document.getElementById('lidR')];
+(function blink(){lids.forEach(l=>{l.classList.remove('blink');void l.offsetWidth;l.classList.add('blink');});
+setTimeout(blink,2200+Math.random()*3800);})();
+window.addEventListener('mousemove',e=>{
+const x=e.clientX/window.innerWidth-.5,y=e.clientY/window.innerHeight-.5;
+pwrap.style.transform='translate('+(x*18)+'px,'+(y*12)+'px)';});
+const POKE={id:['Dipa-kun~','Hm? Ada apa?','Hehe, geli tau.','Iya, aku di sini kok.','Jangan colek-colek ah.'],
+jp:['\u30c7\u30a3\u30d1\u541b~','\u3093\uFF1F\u3069\u3046\u3057\u305F\u306E\uFF1F','\u304f\u3059\u3050\u3063\u305F\u3044\u3088\u3002','\u3046\u3093\u3001\u3053\u3053\u306B\u3044\u308B\u3088\u3002']};
+let poking=false;
+stage.addEventListener('click',()=>{if(poking||busy)return;poking=true;
+stage.classList.add('poke');setTimeout(()=>{stage.classList.remove('poke');poking=false;},480);
+const lines=POKE[LANG];speak(lines[Math.floor(Math.random()*lines.length)]);});
 </script></body></html>"""
 
 
