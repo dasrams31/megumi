@@ -211,7 +211,12 @@ function daypart(){const h=new Date().getHours();
 if(LANG==='jp')return h<10?'\u304a\u306f\u3088\u3046':h<18?'\u3053\u3093\u306b\u3061\u306f':'\u3053\u3093\u3070\u3093\u306f';
 return h<11?'Selamat pagi':h<15?'Selamat siang':h<18?'Selamat sore':'Selamat malam';}
 addMsg('MEGUMI KATO',daypart()+', Dipa-kun! '+(LANG==='id'?'Senang kamu mampir. Mau ngobrol apa hari ini?':'\u4f1a\u3044\u306b\u6765\u3066\u304f\u308c\u3066\u3046\u308c\u3057\u3044\u3002\u4eca\u65e5\u306f\u4f55\u3092\u8a71\u305d\u3046\u304B\uFF1F'),false);
-// --- Live2D (real rigged model; demo: Haru sample) ---
+// --- Live2D (real rigged model) ---
+// Disabled by default (2026-10-18): user prefers the Megumi sprite for now.
+// To enable later: drop the Megumi .moc3/.model3.json into static/live2d/Megumi/,
+// set LIVE2D_MODEL_URL below, and flip USE_LIVE2D to true.
+const USE_LIVE2D = false;
+const LIVE2D_MODEL_URL = '/static/live2d/Haru/Haru.model3.json'; // demo model
 let live2dModel=null;
 function setLiveMouth(o){try{live2dModel.internalModel.coreModel.setParameterValueById('ParamMouthOpenY',o);}catch(e){}}
 function fitLive2D(){if(!live2dModel)return;const w=stage.clientWidth||300,h=stage.clientHeight||600;
@@ -221,7 +226,7 @@ live2dModel.anchor.set(0.5,0.5);live2dModel.x=w/2;live2dModel.y=h/2;}
 async function initLive2D(){try{
 if(!window.PIXI||!PIXI.live2d)return;
 const pixiApp=new PIXI.Application({view:document.getElementById('l2d'),transparent:true,antialias:true,resizeTo:stage});
-const model=await PIXI.live2d.Live2DModel.from('/static/live2d/Haru/Haru.model3.json');
+const model=await PIXI.live2d.Live2DModel.from(LIVE2D_MODEL_URL);
 pixiApp.stage.addChild(model);live2dModel=model;window.__l2d=model;fitLive2D();
 window.addEventListener('resize',fitLive2D);
 model.on('hit',areas=>onLiveTap(areas));
@@ -238,7 +243,7 @@ setTimeout(()=>{try{live2dModel.expression('F08');}catch(e){}},2500);
 }catch(e){}
 if(flustered){pokeTimes=[];speak(FLUSTER[LANG]);}
 else speak(POKE[LANG][Math.floor(Math.random()*POKE[LANG].length)]);}
-initLive2D();
+if(USE_LIVE2D)initLive2D();
 // --- interactivity: blink, cursor-follow parallax, poke, idle nudges ---
 const lids=[document.getElementById('lidL'),document.getElementById('lidR')];
 (function blink(){if(!waving)lids.forEach(l=>{l.classList.remove('blink');void l.offsetWidth;l.classList.add('blink');});
