@@ -44,7 +44,8 @@ transition:transform .35s ease-out;will-change:transform}
 filter:blur(28px) brightness(.5);z-index:-1}
 .stage{position:relative;height:100%;aspect-ratio:1/2;max-width:100%;overflow:hidden;cursor:pointer;
 animation:breathe 6s ease-in-out infinite;box-shadow:0 0 80px rgba(0,0,0,.5)}
-@keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.018)}}
+@keyframes breathe{0%,100%{transform:scale(1) skewX(0deg)}50%{transform:scale(1.018) skewX(.35deg)}}
+.stage img{transition:transform .12s ease}
 .stage img{position:absolute;inset:0;width:100%;height:100%;object-fit:fill;display:block;user-select:none;-webkit-user-drag:none}
 .stage.speaking{animation:speak .5s ease-in-out infinite}
 @keyframes speak{0%,100%{transform:scale(1.01)}50%{transform:scale(1.03) translateY(-5px)}}
@@ -132,7 +133,7 @@ let LANG='id', TTS=true, busy=false;
 const hist=[];
 const msgs=document.getElementById('msgs'), inp=document.getElementById('inp'),
       stage=document.getElementById('stage'), hint=document.getElementById('hint'),
-      pwrap=document.getElementById('pwrap');
+      pwrap=document.getElementById('pwrap'), imgEl=stage.querySelector('img');
 const STR={id:{ph:'Ketik pesan...',hello:'Dipa-kun, selamat datang kembali! Kamu bisa bicara langsung lewat mic atau ketik pesan di bawah ya.',title:'Megumi Kato \u00b7 Live2D AI'},
            jp:{ph:'\u30e1\u30c3\u30bb\u30fc\u30b8\u3092\u5165\u529b...',hello:'\u30c7\u30a3\u30d1\u541b\u3001\u304a\u304b\u3048\u308a! \u30de\u30a4\u30af\u3067\u8a71\u3057\u304b\u3051\u3066\u3082\u3001\u4e0b\u3067\u6253\u3063\u3066\u3082\u3044\u3044\u3088\u3002',title:'\u52a0\u85e4\u6075 \u00b7 Live2D AI'}};
 function addMsg(who,text,me){const d=document.createElement('div');d.className='msg'+(me?' me':'');
@@ -142,10 +143,11 @@ function speak(t){if(!TTS)return;try{speechSynthesis.cancel();
 const u=new SpeechSynthesisUtterance(t);u.lang=LANG==='id'?'id-ID':'ja-JP';u.rate=1;
 const vs=speechSynthesis.getVoices().filter(v=>v.lang.startsWith(u.lang.slice(0,2)));
 if(vs.length)u.voice=vs.find(v=>v.name.toLowerCase().includes('female'))||vs[0];
-u.onstart=()=>stage.classList.add('speaking');u.onend=u.onerror=()=>stage.classList.remove('speaking');
+u.onstart=()=>stage.classList.add('speaking');u.onend=u.onerror=()=>{stage.classList.remove('speaking');imgEl.style.transform='';};
+u.onboundary=()=>{imgEl.style.transform='scale(1.02)';setTimeout(()=>imgEl.style.transform='',130);};
 speechSynthesis.speak(u);}catch(e){}}
 async function send(text){text=(text||'').trim();if(!text||busy)return;busy=true;
-document.getElementById('send').disabled=true;
+document.getElementById('send').disabled=true;resetIdle();
 addMsg(LANG==='id'?'DIPA-KUN':'\u30c7\u30a3\u30d1\u541b',text,true);inp.value='';
 hist.push({role:'user',content:text});if(hist.length>20)hist.splice(0,hist.length-20);
 const tp=addMsg('MEGUMI KATO','mengetik...',false);tp.classList.add('typing');
@@ -174,20 +176,37 @@ mic.onclick=()=>{if(busy)return;rec.lang=LANG==='id'?'id-ID':'ja-JP';
 try{rec.start();mic.classList.add('listening');}catch(_){}};}
 else mic.style.display='none';
 if('speechSynthesis' in window)speechSynthesis.getVoices();
-addMsg('MEGUMI KATO',STR.id.hello,false);
-// --- interactivity: blink, cursor-follow parallax, poke ---
+function daypart(){const h=new Date().getHours();
+if(LANG==='jp')return h<10?'\u304a\u306f\u3088\u3046':h<18?'\u3053\u3093\u306b\u3061\u306f':'\u3053\u3093\u3070\u3093\u306f';
+return h<11?'Selamat pagi':h<15?'Selamat siang':h<18?'Selamat sore':'Selamat malam';}
+addMsg('MEGUMI KATO',daypart()+', Dipa-kun! '+(LANG==='id'?'Senang kamu mampir. Mau ngobrol apa hari ini?':'\u4f1a\u3044\u306b\u6765\u3066\u304f\u308c\u3066\u3046\u308c\u3057\u3044\u3002\u4eca\u65e5\u306f\u4f55\u3092\u8a71\u305d\u3046\u304B\uFF1F'),false);
+// --- interactivity: blink, cursor-follow parallax, poke, idle nudges ---
 const lids=[document.getElementById('lidL'),document.getElementById('lidR')];
 (function blink(){lids.forEach(l=>{l.classList.remove('blink');void l.offsetWidth;l.classList.add('blink');});
 setTimeout(blink,2200+Math.random()*3800);})();
 window.addEventListener('mousemove',e=>{
 const x=e.clientX/window.innerWidth-.5,y=e.clientY/window.innerHeight-.5;
-pwrap.style.transform='translate('+(x*18)+'px,'+(y*12)+'px)';});
+pwrap.style.transform='translate('+(x*18)+'px,'+(y*12)+'px) rotate('+(x*1.6)+'deg)';});
 const POKE={id:['Dipa-kun~','Hm? Ada apa?','Hehe, geli tau.','Iya, aku di sini kok.','Jangan colek-colek ah.'],
 jp:['\u30c7\u30a3\u30d1\u541b~','\u3093\uFF1F\u3069\u3046\u3057\u305F\u306E\uFF1F','\u304f\u3059\u3050\u3063\u305F\u3044\u3088\u3002','\u3046\u3093\u3001\u3053\u3053\u306B\u3044\u308B\u3088\u3002']};
-let poking=false;
-stage.addEventListener('click',()=>{if(poking||busy)return;poking=true;
+const FLUSTER={id:'Dipa-kun! Nakal ya~',jp:'\u30c7\u30a3\u30d1\u541b\uFF01\u3082\u3046\u301C'};
+const IDLE={id:['Dipa-kun, masih di sana?','Aku di sini kok, jangan dianggurin~'],
+jp:['\u30c7\u30a3\u30d1\u541b\u3001\u307e\u3060\u3044\u308B\uFF1F','\u3053\u3053\u306B\u3044\u308B\u3088\u3001\u307b\u3063\u3068\u3044\u3066\u306D\u3002']};
+let poking=false,pokeTimes=[];
+let idleTimer=null,idleCount=0;
+function resetIdle(){clearTimeout(idleTimer);idleCount=0;
+idleTimer=setTimeout(idleNudge,55000);}
+function idleNudge(){if(busy||!TTS||document.hidden){resetIdle();return;}
+if(idleCount>=2)return;const line=IDLE[LANG][idleCount%IDLE[LANG].length];idleCount++;
+addMsg('MEGUMI KATO',line,false);speak(line);
+if(idleCount<2)idleTimer=setTimeout(idleNudge,70000);}
+stage.addEventListener('click',()=>{if(poking||busy)return;poking=true;resetIdle();
+const now=Date.now();pokeTimes=pokeTimes.filter(t=>now-t<4000);pokeTimes.push(now);
+const flustered=pokeTimes.length>=3;
 stage.classList.add('poke');setTimeout(()=>{stage.classList.remove('poke');poking=false;},480);
-const lines=POKE[LANG];speak(lines[Math.floor(Math.random()*lines.length)]);});
+speak(flustered?FLUSTER[LANG]:POKE[LANG][Math.floor(Math.random()*POKE[LANG].length)]);
+if(flustered)pokeTimes=[];});
+resetIdle();
 </script></body></html>"""
 
 
